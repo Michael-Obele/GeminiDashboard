@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Main application capability",
+  "windows": ["main"],
+  "permissions": [
+    "store:default",
+    "shell:allow-execute"
+  ]
+}
