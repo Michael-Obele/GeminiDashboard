@@ -1,4 +1,4 @@
-import { Store } from '@tauri-apps/plugin-store/api';
+import { Store } from '@tauri-apps/plugin-store';
 import type { Session, AppSettings } from '$lib/types';
 
 class StorageService {
