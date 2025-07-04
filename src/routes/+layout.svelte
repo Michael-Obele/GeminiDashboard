@@ -2,13 +2,15 @@
 	import '../app.css';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { ModeWatcher } from 'mode-watcher';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { cn } from '$lib/utils.js';
 	import { MessageSquare, Settings, Info, TerminalSquare, Plus, Trash2 } from 'lucide-svelte';
 	import { sessions, activeSessionId } from '$lib/stores/sessions';
-	import { onMount } from 'svelte';
+	import { settings } from '$lib/stores/settings';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
+	import { toast } from 'svelte-sonner';
 
 	let currentPath = $state('');
 
@@ -16,8 +18,16 @@
 		currentPath = $page.url.pathname;
 	});
 
-	onMount(() => {
-		sessions.load();
+	onMount(async () => {
+		try {
+			await Promise.all([
+				sessions.load(),
+				settings.load()
+			]);
+		} catch (error) {
+			console.error('Failed to initialize app:', error);
+			toast.error('Failed to load application data');
+		}
 	});
 
 	const navItems = [
@@ -26,15 +36,32 @@
 		{ path: '/about', label: 'About', icon: Info }
 	];
 
-	function createNewChat() {
-		const newSession = {
-			id: crypto.randomUUID(),
-			name: 'New Chat',
-			messages: []
-		};
-		sessions.addSession(newSession);
-		activeSessionId.set(newSession.id);
-		goto(`/chat/${newSession.id}`);
+	async function createNewChat() {
+		try {
+			const newSession = await sessions.create();
+			activeSessionId.set(newSession.id);
+			goto(`/chat/${newSession.id}`);
+		} catch (error) {
+			console.error('Failed to create new chat:', error);
+			toast.error('Failed to create new chat');
+		}
+	}
+
+	async function deleteSession(sessionId: string, event: Event) {
+		event.preventDefault();
+		event.stopPropagation();
+		
+		try {
+			await sessions.delete(sessionId);
+			if ($activeSessionId === sessionId) {
+				activeSessionId.set(null);
+				goto('/');
+			}
+			toast.success('Chat deleted');
+		} catch (error) {
+			console.error('Failed to delete session:', error);
+			toast.error('Failed to delete chat');
+		}
 	}
 </script>
 
@@ -68,15 +95,7 @@
 							variant="ghost"
 							size="icon"
 							class="h-6 w-6"
-							onclick={(e) => {
-								e.preventDefault();
-								e.stopPropagation();
-								sessions.deleteSession(session.id);
-								if ($activeSessionId === session.id) {
-									activeSessionId.set(null);
-									goto('/');
-								}
-							}}
+							onclick={(e) => deleteSession(session.id, e)}
 						>
 							<Trash2 class="h-4 w-4" />
 						</Button>

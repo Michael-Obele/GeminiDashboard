@@ -1,69 +1,116 @@
-import { writable } from 'svelte/store';
-import { Store } from 'tauri-plugin-store-api';
+import { writable, derived } from 'svelte/store';
+import { storageService } from '$lib/services/storage';
+import type { Session, Message } from '$lib/types';
 
-export interface Message {
-	id: string;
-	role: 'user' | 'assistant';
-	content: string;
-}
-
-export interface Session {
-	id: string;
-	name: string;
-	messages: Message[];
-}
-
-let sessionsStoreInstance: Store | null = null;
-
-async function getSessionsStore(): Promise<Store> {
-	if (!sessionsStoreInstance) {
-		sessionsStoreInstance = new Store('.sessions.dat');
-	}
-	return sessionsStoreInstance;
-}
-
-const createSessionsStore = () => {
+function createSessionsStore() {
 	const { subscribe, set, update } = writable<Session[]>([]);
 
 	return {
 		subscribe,
-		load: async () => {
-			const store = await getSessionsStore();
-			const sessions = (await store.get<Session[]>('sessions')) || [];
-			set(sessions);
+		
+		async load(): Promise<void> {
+			try {
+				const sessions = await storageService.getSessions();
+				set(sessions);
+			} catch (error) {
+				console.error('Failed to load sessions:', error);
+				set([]);
+			}
 		},
-		addSession: async (session: Session) => {
-			const store = await getSessionsStore();
-			update((sessions) => {
-				const newSessions = [...sessions, session];
-				store.set('sessions', newSessions);
-				store.save();
-				return newSessions;
-			});
+
+		async create(name: string = 'New Chat'): Promise<Session> {
+			const newSession: Session = {
+				id: crypto.randomUUID(),
+				name,
+				messages: [],
+				createdAt: new Date(),
+				updatedAt: new Date()
+			};
+
+			try {
+				await storageService.saveSession(newSession);
+				update(sessions => [...sessions, newSession]);
+				return newSession;
+			} catch (error) {
+				console.error('Failed to create session:', error);
+				throw new Error('Failed to create session');
+			}
 		},
-		deleteSession: async (id: string) => {
-			const store = await getSessionsStore();
-			update((sessions) => {
-				const newSessions = sessions.filter((s) => s.id !== id);
-				store.set('sessions', newSessions);
-				store.save();
-				return newSessions;
-			});
+
+		async delete(sessionId: string): Promise<void> {
+			try {
+				await storageService.deleteSession(sessionId);
+				update(sessions => sessions.filter(s => s.id !== sessionId));
+			} catch (error) {
+				console.error('Failed to delete session:', error);
+				throw new Error('Failed to delete session');
+			}
 		},
-		updateSession: async (id: string, updatedSession: Partial<Session>) => {
-			const store = await getSessionsStore();
-			update((sessions) => {
-				const newSessions = sessions.map((s) =>
-					s.id === id ? { ...s, ...updatedSession } : s
-				);
-				store.set('sessions', newSessions);
-				store.save();
-				return newSessions;
-			});
+
+		async update(sessionId: string, updates: Partial<Session>): Promise<void> {
+			try {
+				update(sessions => {
+					const updatedSessions = sessions.map(session => {
+						if (session.id === sessionId) {
+							const updatedSession = { 
+								...session, 
+								...updates, 
+								updatedAt: new Date() 
+							};
+							// Save to storage asynchronously
+							storageService.saveSession(updatedSession).catch(console.error);
+							return updatedSession;
+						}
+						return session;
+					});
+					return updatedSessions;
+				});
+			} catch (error) {
+				console.error('Failed to update session:', error);
+				throw new Error('Failed to update session');
+			}
+		},
+
+		async addMessage(sessionId: string, message: Omit<Message, 'id' | 'timestamp'>): Promise<void> {
+			const newMessage: Message = {
+				...message,
+				id: crypto.randomUUID(),
+				timestamp: new Date()
+			};
+
+			try {
+				update(sessions => {
+					const updatedSessions = sessions.map(session => {
+						if (session.id === sessionId) {
+							const updatedSession = {
+								...session,
+								messages: [...session.messages, newMessage],
+								updatedAt: new Date()
+							};
+							// Save to storage asynchronously
+							storageService.saveSession(updatedSession).catch(console.error);
+							return updatedSession;
+						}
+						return session;
+					});
+					return updatedSessions;
+				});
+			} catch (error) {
+				console.error('Failed to add message:', error);
+				throw new Error('Failed to add message');
+			}
 		}
 	};
-};
+}
 
 export const sessions = createSessionsStore();
-
 export const activeSessionId = writable<string | null>(null);
+
+// Derived store for the current active session
+export const activeSession = derived(
+	[sessions, activeSessionId],
+	([$sessions, $activeSessionId]) => {
+		if (!$activeSessionId) return null;
+		return $sessions.find(session => session.id === $activeSessionId) || null;
+	}
+);
