@@ -13,7 +13,14 @@ export interface Session {
 	messages: Message[];
 }
 
-const store = new Store('.sessions.dat');
+let sessionsStoreInstance: Store | null = null;
+
+async function getSessionsStore(): Promise<Store> {
+	if (!sessionsStoreInstance) {
+		sessionsStoreInstance = new Store('.sessions.dat');
+	}
+	return sessionsStoreInstance;
+}
 
 const createSessionsStore = () => {
 	const { subscribe, set, update } = writable<Session[]>([]);
@@ -21,10 +28,12 @@ const createSessionsStore = () => {
 	return {
 		subscribe,
 		load: async () => {
+			const store = await getSessionsStore();
 			const sessions = (await store.get<Session[]>('sessions')) || [];
 			set(sessions);
 		},
-		addSession: (session: Session) => {
+		addSession: async (session: Session) => {
+			const store = await getSessionsStore();
 			update((sessions) => {
 				const newSessions = [...sessions, session];
 				store.set('sessions', newSessions);
@@ -32,7 +41,8 @@ const createSessionsStore = () => {
 				return newSessions;
 			});
 		},
-		deleteSession: (id: string) => {
+		deleteSession: async (id: string) => {
+			const store = await getSessionsStore();
 			update((sessions) => {
 				const newSessions = sessions.filter((s) => s.id !== id);
 				store.set('sessions', newSessions);
@@ -40,7 +50,8 @@ const createSessionsStore = () => {
 				return newSessions;
 			});
 		},
-		updateSession: (id: string, updatedSession: Partial<Session>) => {
+		updateSession: async (id: string, updatedSession: Partial<Session>) => {
+			const store = await getSessionsStore();
 			update((sessions) => {
 				const newSessions = sessions.map((s) =>
 					s.id === id ? { ...s, ...updatedSession } : s

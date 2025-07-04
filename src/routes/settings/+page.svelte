@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import {
 		Card,
 		CardContent,
@@ -9,25 +10,29 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Store } from 'tauri-plugin-store-api';
-
-	const store = new Store('.settings.dat');
+	import {
+		getApiKeyFromStore,
+		saveApiKeyToStore,
+		getCliPathFromStore,
+		saveCliPathToStore
+	} from '$lib/services/gemini.js';
 
 	let apiKey = $state('');
 	let cliPath = $state('');
 
 	async function loadSettings() {
-		apiKey = (await store.get('apiKey')) ?? '';
-		cliPath = (await store.get('cliPath')) ?? '';
+		apiKey = (await getApiKeyFromStore()) ?? '';
+		cliPath = (await getCliPathFromStore()) ?? '';
 	}
 
 	async function saveSettings() {
-		await store.set('apiKey', apiKey);
-		await store.set('cliPath', cliPath);
-		await store.save();
+		await saveApiKeyToStore(apiKey);
+		await saveCliPathToStore(cliPath);
 	}
 
-	loadSettings();
+	onMount(() => {
+		loadSettings();
+	});
 </script>
 
 <Card>
@@ -51,4 +56,3 @@
 		<Button onclick={saveSettings}>Save</Button>
 	</CardContent>
 </Card>
-
